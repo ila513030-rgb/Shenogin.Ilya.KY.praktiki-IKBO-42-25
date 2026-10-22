@@ -1,0 +1,5 @@
+# Ошибки обработки
+unknown
+cd too many
+ls -a
+exit
