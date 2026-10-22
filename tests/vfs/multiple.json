@@ -1,0 +1,22 @@
+{
+  "type": "dir",
+  "children": {
+    "readme.txt": {
+      "type": "file",
+      "content": "SGVsbG8="
+    },
+    "notes.txt": {
+      "type": "file",
+      "content": "Tm90ZXM="
+    },
+    "docs": {
+      "type": "dir",
+      "children": {
+        "info.txt": {
+          "type": "file",
+          "content": "SW5mbw=="
+        }
+      }
+    }
+  }
+}
