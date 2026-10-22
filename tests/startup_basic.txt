@@ -1,0 +1,4 @@
+# Проверка заглушек
+ls alpha
+cd beta
+exit
