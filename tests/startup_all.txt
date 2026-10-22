@@ -1,0 +1,8 @@
+# Проверка этапов 1–3
+ls
+ls $HOME
+cd docs
+cd a b
+unknown_command
+ls -z
+exit
