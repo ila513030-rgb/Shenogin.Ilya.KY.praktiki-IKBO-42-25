@@ -7,6 +7,8 @@ import shlex
 import socket
 from pathlib import Path
 
+from src.vfs import VFSError, count_nodes, load_vfs
+
 
 def parse_command(line):
     """Разбирать кавычки и раскрывать переменные окружения."""
@@ -73,6 +75,12 @@ def main(argv=None):
     parser.add_argument("--script", help="путь к стартовому скрипту")
     args = parser.parse_args(argv)
     print(f"Конфигурация: vfs={args.vfs!r}, script={args.script!r}")
+    try:
+        vfs = load_vfs(args.vfs)
+    except VFSError as error:
+        print(f"Ошибка загрузки VFS: {error}")
+        return
+    print(f"VFS загружена в память, элементов: {count_nodes(vfs)}")
     if args.script and not run_script(args.script):
         return
     while True:
