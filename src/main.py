@@ -1,18 +1,20 @@
-"""Консольный эмулятор UNIX-подобной оболочки, этап 1."""
+"""Консольный эмулятор: REPL и выполнение стартового скрипта."""
 
+import argparse
 import getpass
 import os
 import shlex
 import socket
+from pathlib import Path
 
 
 def parse_command(line):
-    """Разобрать строку с подстановкой переменных окружения."""
+    """Разбирать кавычки и раскрывать переменные окружения."""
     return shlex.split(os.path.expandvars(line))
 
 
 def execute_command(parts):
-    """Выполнить команду-заглушку или завершить сеанс."""
+    """Выполнять команды-заглушки и сообщать об ошибках."""
     if not parts:
         return True
     name, *args = parts
@@ -34,19 +36,52 @@ def execute_command(parts):
     return True
 
 
-def main():
-    """Запустить интерактивный диалог."""
-    prompt = f"{getpass.getuser()}@{socket.gethostname()}:~$ "
+def run_line(line):
+    """Обработать одну строку, вернув статус продолжения."""
+    try:
+        return execute_command(parse_command(line))
+    except ValueError as error:
+        print(f"Ошибка разбора: {error}")
+        return True
+
+
+def prompt_text():
+    """Сформировать приглашение из данных реальной ОС."""
+    return f"{getpass.getuser()}@{socket.gethostname()}:~$ "
+
+
+def run_script(path):
+    """Выполнить команды из скрипта с поддержкой комментариев."""
+    try:
+        lines = Path(path).read_text(encoding="utf-8").splitlines()
+    except (OSError, UnicodeError) as error:
+        print(f"Ошибка чтения скрипта: {error}")
+        return False
+    for line in lines:
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        print(prompt_text() + line)
+        if not run_line(line):
+            return False
+    return True
+
+
+def main(argv=None):
+    """Прочитать настройки, запустить скрипт и интерактивный цикл."""
+    parser = argparse.ArgumentParser(description="Эмулятор оболочки")
+    parser.add_argument("--vfs", help="путь к JSON-файлу VFS")
+    parser.add_argument("--script", help="путь к стартовому скрипту")
+    args = parser.parse_args(argv)
+    print(f"Конфигурация: vfs={args.vfs!r}, script={args.script!r}")
+    if args.script and not run_script(args.script):
+        return
     while True:
         try:
-            line = input(prompt)
-            if not execute_command(parse_command(line)):
+            if not run_line(input(prompt_text())):
                 break
         except (EOFError, KeyboardInterrupt):
             print()
             break
-        except ValueError as error:
-            print(f"Ошибка разбора: {error}")
 
 
 if __name__ == "__main__":
