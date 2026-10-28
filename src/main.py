@@ -1,95 +1,176 @@
-"""Консольный эмулятор: REPL и выполнение стартового скрипта."""
+"""Графический эмулятор командной оболочки. Этапы 1–3."""
 
 import argparse
 import getpass
 import os
 import shlex
 import socket
+import tkinter as tk
 from pathlib import Path
 
 from src.vfs import VFSError, count_nodes, load_vfs
 
 
 def parse_command(line):
-    """Разбирать кавычки и раскрывать переменные окружения."""
+    """Разобрать команду и раскрыть переменные окружения."""
     return shlex.split(os.path.expandvars(line))
 
 
 def execute_command(parts):
-    """Выполнять команды-заглушки и сообщать об ошибках."""
+    """Обработать команду и вернуть результат."""
     if not parts:
-        return True
-    name, *args = parts
-    if name not in ("ls", "cd", "exit"):
-        print(f"Ошибка: неизвестная команда {name}")
-        return True
-    if name == "exit":
+        return "", False
+
+    command, *args = parts
+
+    if command == "exit":
         if args:
-            print("Ошибка: exit не принимает аргументов")
-            return True
-        return False
-    if name == "cd" and len(args) > 1:
-        print("Ошибка: cd принимает не более одного пути")
-        return True
-    if name == "ls" and any(arg.startswith("-") for arg in args):
-        print("Ошибка: ключи ls пока не поддерживаются")
-        return True
-    print(f"{name}: аргументы = {args}")
-    return True
+            return "Ошибка: exit не принимает аргументов", False
+        return "", True
+
+    if command not in ("ls", "cd"):
+        return f"Ошибка: неизвестная команда {command}", False
+
+    if command == "cd" and len(args) > 1:
+        return "Ошибка: cd принимает не более одного пути", False
+
+    if command == "ls" and any(arg.startswith("-") for arg in args):
+        return "Ошибка: ключи ls пока не поддерживаются", False
+
+    return f"{command}: аргументы = {args}", False
 
 
-def run_line(line):
-    """Обработать одну строку, вернув статус продолжения."""
-    try:
-        return execute_command(parse_command(line))
-    except ValueError as error:
-        print(f"Ошибка разбора: {error}")
-        return True
+class ShellWindow:
+    """Окно графического эмулятора."""
 
+    def __init__(self, root, args):
+        self.root = root
+        self.root.title(
+            f"Эмулятор - [{getpass.getuser()}@"
+            f"{socket.gethostname()}]"
+        )
+        self.root.geometry("850x550")
+        self.root.configure(bg="#111827")
 
-def prompt_text():
-    """Сформировать приглашение из данных реальной ОС."""
-    return f"{getpass.getuser()}@{socket.gethostname()}:~$ "
+        self.output = tk.Text(
+            root,
+            bg="#050A12",
+            fg="#E5E7EB",
+            insertbackground="white",
+            font=("Consolas", 12),
+            state="disabled",
+            wrap="word"
+        )
+        self.output.pack(
+            fill="both",
+            expand=True,
+            padx=12,
+            pady=(12, 6)
+        )
 
+        self.entry = tk.Entry(
+            root,
+            bg="#1F2937",
+            fg="white",
+            insertbackground="white",
+            font=("Consolas", 12)
+        )
+        self.entry.pack(
+            fill="x",
+            padx=12,
+            pady=(6, 12),
+            ipady=8
+        )
 
-def run_script(path):
-    """Выполнить команды из скрипта с поддержкой комментариев."""
-    try:
-        lines = Path(path).read_text(encoding="utf-8").splitlines()
-    except (OSError, UnicodeError) as error:
-        print(f"Ошибка чтения скрипта: {error}")
-        return False
-    for line in lines:
-        if not line.strip() or line.lstrip().startswith("#"):
-            continue
-        print(prompt_text() + line)
-        if not run_line(line):
+        self.entry.bind("<Return>", self.handle_command)
+        self.entry.focus_set()
+
+        self.write(
+            f"Конфигурация: vfs={args.vfs!r}, "
+            f"script={args.script!r}"
+        )
+
+        try:
+            self.vfs = load_vfs(args.vfs)
+        except VFSError as error:
+            self.write(f"Ошибка загрузки VFS: {error}")
+            self.entry.configure(state="disabled")
+            return
+
+        self.write(
+            "VFS загружена в память, элементов: "
+            f"{count_nodes(self.vfs)}"
+        )
+        self.write("Введите команду.\n")
+
+        if args.script:
+            self.run_script(args.script)
+
+    def write(self, message):
+        """Добавить строку в область вывода."""
+        self.output.config(state="normal")
+        self.output.insert("end", message + "\n")
+        self.output.config(state="disabled")
+        self.output.see("end")
+
+    def process_line(self, line):
+        """Разобрать и выполнить введённую команду."""
+        self.write(f"> {line}")
+
+        try:
+            parts = parse_command(line)
+            result, should_exit = execute_command(parts)
+        except ValueError as error:
+            self.write(f"Ошибка разбора: {error}")
             return False
-    return True
+
+        if result:
+            self.write(result)
+
+        return should_exit
+
+    def handle_command(self, event=None):
+        """Обработать нажатие Enter."""
+        line = self.entry.get()
+        self.entry.delete(0, "end")
+
+        if self.process_line(line):
+            self.root.destroy()
+
+    def run_script(self, path):
+        """Выполнить команды из стартового файла."""
+        try:
+            lines = Path(path).read_text(
+                encoding="utf-8"
+            ).splitlines()
+        except (OSError, UnicodeError) as error:
+            self.write(f"Ошибка чтения скрипта: {error}")
+            return
+
+        for line in lines:
+            if not line.strip():
+                continue
+
+            if line.lstrip().startswith("#"):
+                continue
+
+            if self.process_line(line):
+                self.root.destroy()
+                return
 
 
 def main(argv=None):
-    """Прочитать настройки, запустить скрипт и интерактивный цикл."""
-    parser = argparse.ArgumentParser(description="Эмулятор оболочки")
-    parser.add_argument("--vfs", help="путь к JSON-файлу VFS")
-    parser.add_argument("--script", help="путь к стартовому скрипту")
+    """Запустить графический эмулятор."""
+    parser = argparse.ArgumentParser(
+        description="Графический эмулятор оболочки"
+    )
+    parser.add_argument("--vfs")
+    parser.add_argument("--script")
     args = parser.parse_args(argv)
-    print(f"Конфигурация: vfs={args.vfs!r}, script={args.script!r}")
-    try:
-        vfs = load_vfs(args.vfs)
-    except VFSError as error:
-        print(f"Ошибка загрузки VFS: {error}")
-        return
-    print(f"VFS загружена в память, элементов: {count_nodes(vfs)}")
-    if args.script and not run_script(args.script):
-        return
-    while True:
-        try:
-            if not run_line(input(prompt_text())):
-                break
-        except (EOFError, KeyboardInterrupt):
-            print()
-            break
+
+    root = tk.Tk()
+    ShellWindow(root, args)
+    root.mainloop()
 
 
 if __name__ == "__main__":
