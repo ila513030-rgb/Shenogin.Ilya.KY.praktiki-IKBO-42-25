@@ -30,28 +30,33 @@ def parser_for_stage(stage):
     return parser
 
 
+def validate_test_config(args):
+    """Проверить имя пакета и путь в тестовом режиме."""
+    if len(args.package) != 1 or not ("A" <= args.package <= "Z"):
+        raise ConfigError("тестовый пакет должен быть буквой A-Z")
+    if not Path(args.repository).is_file():
+        raise ConfigError("тестовый JSON-файл не найден")
+
+
+def validate_npm_config(args):
+    """Проверить адрес официального npm-репозитория."""
+    parsed = urlparse(args.repository)
+    if parsed.scheme != "https" or not parsed.netloc:
+        raise ConfigError("нужен корректный HTTPS URL репозитория")
+    if parsed.netloc.lower() != "registry.npmjs.org":
+        raise ConfigError("поддерживается registry.npmjs.org")
+    if any(char.isspace() for char in args.package):
+        raise ConfigError("имя npm-пакета не должно содержать пробелы")
+
+
 def validate_config(args):
-    """Проверить все параметры и возвратить настройки."""
+    """Проверить параметры и вернуть настройки для анализа."""
     if not args.package.strip():
         raise ConfigError("имя пакета не может быть пустым")
     if not args.output.lower().endswith(".png"):
         raise ConfigError("имя изображения должно оканчиваться на .png")
     if args.test_mode:
-        if len(args.package) != 1 or not args.package.isupper():
-            raise ConfigError("тестовый пакет должен быть буквой A-Z")
-        if not ("A" <= args.package <= "Z"):
-            raise ConfigError("тестовый пакет должен быть буквой A-Z")
-        path = Path(args.repository)
-        if not path.is_file():
-            raise ConfigError("тестовый JSON-файл не найден")
+        validate_test_config(args)
     else:
-        parsed = urlparse(args.repository)
-        if parsed.scheme != "https" or not parsed.netloc:
-            raise ConfigError("нужен корректный HTTPS URL репозитория")
-        if parsed.netloc.lower() != "registry.npmjs.org":
-            raise ConfigError("поддерживается registry.npmjs.org")
-        if not args.package.strip() or any(
-            char.isspace() for char in args.package
-        ):
-            raise ConfigError("имя npm-пакета не должно содержать пробелы")
+        validate_npm_config(args)
     return args
